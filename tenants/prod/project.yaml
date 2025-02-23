@@ -1,0 +1,20 @@
+apiVersion: argoproj.io/v1alpha1
+kind: AppProject
+metadata:
+  name: instavote-prod
+  namespace: argocd
+spec:
+  description: Prod environment for Instavote application
+  sourceRepos:
+    - '*'
+  destinations:
+    - namespace: instavote-prod
+      server: https://kubernetes.default.svc
+  clusterResourceWhitelist:
+    - group: '*'
+      kind: '*'
+  namespaceResourceBlacklist:
+    - group: ''
+      kind: ResourceQuota
+    - group: ''
+      kind: LimitRange
