@@ -1,20 +1,175 @@
 # Instavote Platform Configuration
 
+> **Important**: Before using this configuration, replace the following placeholders throughout the repository:
+> - `GITHUB_ORG`: Your GitHub organization name
+> - `YOUR_ORGANIZATION`: Your company or organization name
+> - Update email addresses and contact information in the Support section
+> - Update any environment-specific URLs or endpoints
+
 This repository contains platform-level configurations for the Instavote application, including tenant management, RBAC, network policies, and deployment patterns.
 
-## Repository Structure
+## Repository Structure with Sample Code
 
 ```
 instavote-platform-config/
-├── tenants/              # Tenant-specific configurations
+├── tenants/
 │   ├── dev/
+│   │   ├── project.yaml                # ArgoCD project definition
+│   │   ├── resource-quota.yaml         # Resource limits
+│   │   └── network-policies.yaml       # Network policies
 │   ├── staging/
+│   │   └── [similar structure as dev]
 │   └── prod/
-├── rbac/                 # RBAC configurations
+│       └── [similar structure as dev]
+├── rbac/
 │   ├── groups/
+│   │   ├── platform-admins.yaml
+│   │   ├── dev-team.yaml
+│   │   └── ops-team.yaml
 │   └── roles/
-├── applicationsets/      # ApplicationSet definitions
-└── docs/                 # Additional documentation
+│       ├── tenant-admin.yaml
+│       └── tenant-viewer.yaml
+└── applicationsets/
+    └── instavote-apps.yaml           # Application deployment patterns
+```
+
+### Sample Configurations
+
+#### 1. ArgoCD Project (tenants/dev/project.yaml)
+```yaml
+apiVersion: argoproj.io/v1alpha1
+kind: AppProject
+metadata:
+  name: instavote-dev
+  namespace: argocd
+spec:
+  description: Development environment for Instavote application
+  sourceRepos:
+    - 'https://github.com/GITHUB_ORG/instavote-gitops'  # Replace GITHUB_ORG with your organization
+  destinations:
+    - namespace: instavote-dev
+      server: https://kubernetes.default.svc
+  clusterResourceWhitelist:
+    - group: ''
+      kind: Namespace
+    - group: 'apps'
+      kind: Deployment
+    - group: 'argoproj.io'
+      kind: Rollout
+  roles:
+    - name: dev-admin
+      description: Developer admin access
+      policies:
+        - p, proj:instavote-dev:dev-admin, applications, *, instavote-dev/*, allow
+```
+
+#### 2. Resource Quota (tenants/dev/resource-quota.yaml)
+```yaml
+apiVersion: v1
+kind: ResourceQuota
+metadata:
+  name: dev-quota
+  namespace: instavote-dev
+spec:
+  hard:
+    requests.cpu: "4"
+    requests.memory: 8Gi
+    limits.cpu: "8"
+    limits.memory: 16Gi
+    pods: "20"
+```
+
+#### 3. Network Policy (tenants/dev/network-policies.yaml)
+```yaml
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: default-deny-ingress
+  namespace: instavote-dev
+spec:
+  podSelector: {}
+  policyTypes:
+  - Ingress
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-vote-to-redis
+  namespace: instavote-dev
+spec:
+  podSelector:
+    matchLabels:
+      app: redis
+  ingress:
+  - from:
+    - podSelector:
+        matchLabels:
+          app: vote
+    ports:
+    - protocol: TCP
+      port: 6379
+```
+
+#### 4. RBAC Role (rbac/roles/tenant-admin.yaml)
+```yaml
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: tenant-admin
+rules:
+  - apiGroups: ["argoproj.io"]
+    resources: ["applications", "applicationsets"]
+    verbs: ["get", "list", "watch", "update", "patch"]
+  - apiGroups: [""]
+    resources: ["namespaces", "pods", "services"]
+    verbs: ["get", "list", "watch"]
+```
+
+#### 5. ApplicationSet (applicationsets/instavote-apps.yaml)
+```yaml
+apiVersion: argoproj.io/v1alpha1
+kind: ApplicationSet
+metadata:
+  name: instavote
+  namespace: argocd
+spec:
+  generators:
+    - matrix:
+        generators:
+          - git:
+              repoURL: https://github.com/GITHUB_ORG/instavote-gitops  # Replace GITHUB_ORG with your organization
+              revision: HEAD
+              directories:
+                - path: "charts/*"
+          - list:
+              elements:
+                - environment: dev
+                  namespace: instavote-dev
+                - environment: staging
+                  namespace: instavote-staging
+                - environment: prod
+                  namespace: instavote-prod
+  template:
+    metadata:
+      name: '{{path.basename}}-{{environment}}'
+    spec:
+      project: instavote-{{environment}}
+      source:
+        repoURL: https://github.com/initcron/instavote-gitops
+        targetRevision: HEAD
+        path: '{{path}}'
+        helm:
+          valueFiles:
+            - env/{{environment}}.yaml
+      destination:
+        server: https://kubernetes.default.svc
+        namespace: '{{namespace}}'
+      syncPolicy:
+        automated:
+          prune: true
+          selfHeal: true
+        syncOptions:
+          - CreateNamespace=true
 ```
 
 ## Components
@@ -49,7 +204,7 @@ Deployment patterns for applications across environments:
 
 1. **Clone the Repository**
    ```bash
-   git clone https://github.com/initcron/instavote-platform-config.git
+   git clone https://github.com/GITHUB_ORG/instavote-platform-config.git  # Replace GITHUB_ORG with your organization
    cd instavote-platform-config
    ```
 
@@ -158,12 +313,13 @@ Common issues and solutions:
 - Documentation updates
 - Security considerations
 
-
 ### Documentation
 - [ArgoCD Documentation](https://argo-cd.readthedocs.io/)
 - [Network Policy Guide](https://kubernetes.io/docs/concepts/services-networking/network-policies/)
 - [RBAC Documentation](https://kubernetes.io/docs/reference/access-authn-authz/rbac/)
 
 ## License
-Available under Apache 2.0 license. Owner of the repo is Initcron Systems Private Limited (School of Devops) . All rights reserved.
+Available under Apache 2.0 license. Owner of the repo is Initcron Systems Private Limited (School of Devops).
+
+
 
